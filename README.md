@@ -165,6 +165,23 @@ If you import `rules_rust` via this extension, existing `load("@rules_rust//..."
 Using this extension is STRONGLY ENCOURAGED because it carries fixes that improve Windows behavior, rust-analyzer integration, and related compatibility work.
 In addition, when using the `rules_rs` toolchains, loading the compilation rules from `@rules_rs` directly and using the extension is REQUIRED for toolchain resolution to work correctly, at least until https://github.com/bazelbuild/rules_rust/pull/3857 is accepted by rules_rust maintainers. See the Migration section for more info.
 
+## Import `rules_rust_prost` from `rules_rs`
+
+`rules_rs` also exports a `rules_rust_prost` module extension for the prost integration:
+
+```bzl
+bazel_dep(name = "rules_proto", version = "7.1.0")
+bazel_dep(name = "protobuf", version = "34.0.bcr.1", repo_name = "com_google_protobuf")
+
+rules_rust_prost = use_extension("@rules_rs//rs/experimental:rules_rust_prost.bzl", "rules_rust_prost")
+use_repo(rules_rust_prost, "rules_rust_prost")
+
+register_toolchains("@rules_rust_prost//:default_prost_toolchain")
+register_toolchains("@//path/to/proto_toolchain")
+```
+
+The default prost toolchain and its cargo dependencies are provided by `rules_rs`. If you need different prost, tonic, or plugin versions, you can still define your own `rust_prost_toolchain` from `@rules_rust_prost//:defs.bzl`.
+
 ## Platform Configuration
 
 For reliable toolchain resolution, ABI choices should be explicit on every platform participating in your build, including the host platform.

@@ -291,10 +291,21 @@ def _compute_strip_prefix(annotation, cargo_toml_json, name):
     # TODO(zbarsky): any more cases to handle here?
     return strip_prefix
 
+def _annotations_for_package(annotations_by_hub_name, package):
+    hub_name = package.get("hub_name")
+    if not hub_name:
+        fail("Missing hub_name for package %s" % package.get("name", "<unknown>"))
+
+    annotations = annotations_by_hub_name.get(hub_name)
+    if annotations == None:
+        fail("Missing annotations for hub %s" % hub_name)
+
+    return annotations
+
 def download_metadata_for_git_crates(
         mctx,
         state,
-        annotations):
+        annotations_by_hub_name):
     for url, fetch_state in state.in_flight_git_crate_fetches_by_url.items():
         cargo_toml_path = _sanitize_path_fragment(url)
         _ensure_cargo_toml_exists(mctx.path(cargo_toml_path), fetch_state)
@@ -304,6 +315,7 @@ def download_metadata_for_git_crates(
 
         for package in fetch_state.packages:
             name = package["name"]
+            annotations = _annotations_for_package(annotations_by_hub_name, package)
 
             if cargo_toml_json.get("package", {}).get("name") != name:
                 annotation = annotation_for(annotations, name, package["version"])
@@ -342,6 +354,7 @@ def download_metadata_for_git_crates(
 
         # TODO(zbarsky): multiple crates?
         first_pkg = clone_state.packages[0]
+        annotations = _annotations_for_package(annotations_by_hub_name, first_pkg)
         annotation = annotation_for(annotations, first_pkg["name"], first_pkg["version"])
         cargo_toml_path = clone_dir.get_child(annotation.workspace_cargo_toml)
         _ensure_cargo_toml_exists(cargo_toml_path, clone_state)
@@ -350,6 +363,7 @@ def download_metadata_for_git_crates(
 
         for package in clone_state.packages:
             name = package["name"]
+            annotations = _annotations_for_package(annotations_by_hub_name, package)
 
             if cargo_toml_json.get("package", {}).get("name") != name:
                 annotation = annotation_for(annotations, name, package["version"])

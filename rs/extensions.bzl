@@ -821,9 +821,8 @@ crate.annotation(
 
     hub_contents = []
     for name, versions in versions_by_name.items():
-        binaries = annotation_for(annotations, name, version).gen_binaries
-
         for version in versions:
+            binaries = annotation_for(annotations, name, version).gen_binaries
             spoke_repo = _spoke_repo(hub_name, name, version)
 
             hub_contents.append("""
@@ -842,6 +841,8 @@ alias(
         workspace_versions = workspace_dep_versions_by_name.get(name)
         if workspace_versions:
             fq = sorted(workspace_versions)[-1]
+            default_version = fq[len(name) + 1:]
+            binaries = annotation_for(annotations, name, default_version).gen_binaries
 
             hub_contents.append("""
 alias(
@@ -1139,6 +1140,8 @@ def _crate_impl(mctx):
 
     packages_by_hub_name = {}
     cargo_toml_by_hub_name = {}
+    cargo_credentials_by_hub_name = {}
+    annotations_by_hub_name = {}
 
     for mod in mctx.modules:
         if not mod.tags.from_cargo:
@@ -1146,11 +1149,14 @@ def _crate_impl(mctx):
 
         for cfg in mod.tags.from_cargo:
             annotations = build_annotation_map(mod, cfg.name)
+            annotations_by_hub_name[cfg.name] = annotations
             mctx.watch(cfg.cargo_lock)
             mctx.watch(cfg.cargo_toml)
             cargo_toml_by_hub_name[cfg.name] = run_toml2json(mctx, cfg.cargo_toml)
             cargo_lock = run_toml2json(mctx, cfg.cargo_lock)
             parsed_packages = cargo_lock.get("package", [])
+            for package in parsed_packages:
+                package["hub_name"] = cfg.name
             packages_by_hub_name[cfg.name] = parsed_packages
 
             # Process git downloads first because they may require a followup download if the repo is a workspace,
@@ -1169,12 +1175,13 @@ def _crate_impl(mctx):
             else:
                 cargo_credentials = {}
 
+            cargo_credentials_by_hub_name[cfg.name] = cargo_credentials
             start_crate_registry_downloads(mctx, downloader_state, annotations, packages_by_hub_name[cfg.name], cargo_credentials, cfg.debug)
 
     for fetch_state in downloader_state.in_flight_git_crate_fetches_by_url.values():
         fetch_state.download_token.wait()
 
-    download_metadata_for_git_crates(mctx, downloader_state, annotations)
+    download_metadata_for_git_crates(mctx, downloader_state, annotations_by_hub_name)
 
     # TODO(zbarsky): Unfortunate that we block on the download for crates.io even though it's well-known.
     # Should we hardcode it?
@@ -1186,12 +1193,14 @@ def _crate_impl(mctx):
 
     for mod in mctx.modules:
         for cfg in mod.tags.from_cargo:
-            if mctx.is_dev_dependency(cfg):
-                direct_dev_deps.append(cfg.name)
-            else:
-                direct_deps.append(cfg.name)
+            if mod.is_root:
+                if mctx.is_dev_dependency(cfg):
+                    direct_dev_deps.append(cfg.name)
+                else:
+                    direct_deps.append(cfg.name)
 
             hub_packages = packages_by_hub_name[cfg.name]
+            cargo_credentials = cargo_credentials_by_hub_name[cfg.name]
 
             annotations = build_annotation_map(mod, cfg.name)
 

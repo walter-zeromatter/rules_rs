@@ -1,0 +1,65 @@
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library_group")
+load("@rules_rust_prost//:defs.bzl", "rust_prost_toolchain")
+
+package(default_visibility = ["//visibility:public"])
+
+PROST_RUST_EDITION = "2021"
+
+exports_files([
+    "Cargo.lock",
+    "Cargo.toml",
+])
+
+bool_flag(
+    name = "compile_well_known_types",
+    build_setting_default = True,
+)
+
+config_setting(
+    name = "compile_well_known_types_setting",
+    flag_values = {
+        ":compile_well_known_types": "true",
+    },
+)
+
+rust_binary(
+    name = "protoc_wrapper",
+    srcs = ["@rules_rust_prost//private:protoc_wrapper_source"],
+    edition = PROST_RUST_EDITION,
+    deps = [
+        "@rrprd//:heck-0.5.0",
+        "@rrprd//:prost",
+        "@rrprd//:prost-types",
+    ],
+)
+
+rust_library_group(
+    name = "prost_runtime",
+    deps = [
+        "@rrprd//:prost",
+    ],
+)
+
+rust_library_group(
+    name = "tonic_runtime",
+    deps = [
+        ":prost_runtime",
+        "@rrprd//:tonic",
+    ],
+)
+
+rust_prost_toolchain(
+    name = "default_prost_toolchain_impl",
+    compile_well_known_types = select({
+        ":compile_well_known_types_setting": True,
+        "//conditions:default": False,
+    }),
+    prost_plugin = "@rrprd//:protoc-gen-prost__protoc-gen-prost",
+    prost_plugin_flag = "--plugin=protoc-gen-prost=%s",
+    prost_runtime = ":prost_runtime",
+    prost_types = "@rrprd//:prost-types",
+    tonic_plugin = "@rrprd//:protoc-gen-tonic__protoc-gen-tonic",
+    tonic_plugin_flag = "--plugin=protoc-gen-tonic=%s",
+    tonic_runtime = ":tonic_runtime",
+)
