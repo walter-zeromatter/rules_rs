@@ -290,8 +290,12 @@ def _generate_hub_and_spokes(
     workspace_root = _normalize_path(cargo_metadata["workspace_root"])
     workspace_root_prefix = workspace_root + "/"
     workspace_member_keys = {}
+    workspace_member_labels = {}
+    workspace_package = _label_directory(cargo_lock_path)
     for package in cargo_metadata["packages"]:
         workspace_member_keys[(package["name"], package["version"])] = True
+        package_dir = _normalize_path(package["manifest_path"]).removeprefix(workspace_root_prefix).removesuffix("/Cargo.toml")
+        workspace_member_labels[(package["name"], package["version"])] = "@@//" + paths.join(workspace_package, package_dir)
 
     dep_paths_by_name = {}
     for package in cargo_metadata["packages"]:
@@ -572,7 +576,11 @@ def _generate_hub_and_spokes(
                     continue
 
             dep_fq = _fq_crate(dep_package, resolved_version)
-            dep["bazel_target"] = "@%s//:%s" % (hub_name, dep_fq)
+            workspace_label = workspace_member_labels.get((dep_package, resolved_version))
+            if workspace_label:
+                dep["bazel_target"] = workspace_label
+            else:
+                dep["bazel_target"] = "@%s//:%s" % (hub_name, dep_fq)
             dep["feature_resolutions"] = feature_resolutions_by_fq_crate[dep_fq]
 
             target = dep.get("target")
@@ -957,7 +965,6 @@ RESOLVED_PLATFORMS = select({{
     _date(mctx, "done")
 
     repo_root = _normalize_path(cargo_metadata["workspace_root"])
-    workspace_package = _label_directory(cargo_lock_path)
 
     workspace_dep_stanzas = []
     for package in cargo_metadata["packages"]:
@@ -1128,7 +1135,25 @@ def _compute_workspace_fq_deps(workspace_members, versions_by_name):
 
     return workspace_fq_deps
 
+def _check_rules_rust_compat(mctx):
+    """Check that the resolved rules_rust includes required hermeticbuild patches."""
+    defs_bzl = mctx.path(Label("@rules_rust//rust:defs.bzl"))
+    content = mctx.read(defs_bzl)
+    if "_rule_wrapper" not in content:
+        fail(
+            "The resolved rules_rust does not include required patches from " +
+            "hermeticbuild/rules_rust (missing _rule_wrapper in rust/defs.bzl). " +
+            "rules_rs requires a rules_rust fork that supports automatic " +
+            "deps/proc_macro_deps merging.\n\n" +
+            "If you have bazel_dep(name = \"rules_rust\", ...) in your MODULE.bazel, " +
+            "either remove it to use the version pinned by rules_rs, or ensure your " +
+            "override includes the hermeticbuild patches.\n\n" +
+            "See https://github.com/hermeticbuild/rules_rs#import-rules_rust-from-rules_rs",
+        )
+
 def _crate_impl(mctx):
+    _check_rules_rust_compat(mctx)
+
     # TODO(zbarsky): Kick off `cargo` fetch early to mitigate https://github.com/bazelbuild/bazel/issues/26995
     cargo_path = mctx.path(RS_HOST_CARGO_LABEL)
 

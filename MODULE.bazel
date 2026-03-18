@@ -1,8 +1,17 @@
 module(name = "rules_rs")
 
-########### BECOME THE RULES_RUST FACADE ################
-rules_rust = use_extension("//rs/experimental:rules_rust.bzl", "rules_rust")
-use_repo(rules_rust, "rules_rust")
+########### RULES_RUST DEPENDENCY ######################
+# rules_rust is provided as a bazel_dep so that consumers can override it
+# with archive_override() or local_path_override() in their MODULE.bazel.
+# Overriding with a version which does not include required patches from
+# hermeticbuild/rules_rust may cause build failures.
+bazel_dep(name = "rules_rust", version = "0.68.1")
+archive_override(
+    module_name = "rules_rust",
+    integrity = "sha256-xT7zyL35CDK5b7iKdKL+WchslRZsnXDXuBMHiqVD0ps=",
+    strip_prefix = "rules_rust-7ed8a24a37be47378b8a266ae3016148b9cb5c49",
+    urls = ["https://github.com/hermeticbuild/rules_rust/archive/7ed8a24a37be47378b8a266ae3016148b9cb5c49.tar.gz"],
+)
 
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
