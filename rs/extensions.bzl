@@ -572,7 +572,14 @@ def _generate_hub_and_spokes(
                     continue
 
             dep_fq = _fq_crate(dep_package, resolved_version)
-            dep["bazel_target"] = "@%s//:%s" % (hub_name, dep_fq)
+
+            # Skip setting @crates// target for workspace members — they are
+            # built from source at their workspace path, not vendored into the
+            # hub.  Annotations (crate.annotation deps=[...]) or the workspace
+            # path-dep resolution at line ~995 will supply the correct target.
+            if (dep_package, resolved_version) not in workspace_member_keys:
+                dep["bazel_target"] = "@%s//:%s" % (hub_name, dep_fq)
+
             dep["feature_resolutions"] = feature_resolutions_by_fq_crate[dep_fq]
 
             target = dep.get("target")
